@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flink 集群画像负载效果评估报告</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); color: white; padding: 32px 40px; position: relative; }
+  .header h1 { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+  .header .meta { font-size: 13px; opacity: 0.7; }
+  .header .cluster-name { font-size: 14px; opacity: 0.9; margin-top: 4px; }
+  .flink-link { position: absolute; top: 32px; right: 40px; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 8px; color: white; text-decoration: none; font-size: 13px; font-weight: 500; transition: all 0.2s; }
+  .flink-link:hover { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.5); }
+  .container { max-width: 1400px; margin: 0 auto; padding: 28px 24px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 28px; }
+  .summary-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .s-label { font-size: 12px; color: #6b7280; margin-bottom: 8px; }
+  .s-val { font-size: 28px; font-weight: 700; color: #1a1a2e; }
+  .s-sub { font-size: 13px; color: #6b7280; margin-top: 4px; }
+  .s-badge { display: inline-block; margin-top: 8px; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; }
+  .badge-warn { background: #fef3c7; color: #92400e; }
+  .badge-ok { background: #d1fae5; color: #065f46; }
+  .badge-danger { background: #fee2e2; color: #991b1b; }
+  .section-title { font-size: 16px; font-weight: 700; color: #1a1a2e; margin-bottom: 14px; padding-left: 10px; border-left: 4px solid #0f3460; }
+  .cluster-overview { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 28px; }
+  .cluster-row { display: grid; grid-template-columns: 140px repeat(6, 1fr); gap: 0; }
+  .header-row { font-size: 12px; color: #6b7280; font-weight: 600; padding-bottom: 10px; border-bottom: 1px solid #f3f4f6; margin-bottom: 12px; }
+  .data-row { padding: 10px 0; border-bottom: 1px solid #f9fafb; align-items: center; }
+  .cell { padding: 0 8px; font-size: 13px; }
+  .row-label { font-weight: 600; font-size: 13px; padding: 0 8px; }
+  .row-actual { color: #374151; }
+  .row-logical { color: #2563eb; }
+  .row-profile { color: #7c3aed; }
+  .machine-card { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; }
+  .machine-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+  .machine-ip { font-size: 18px; font-weight: 700; color: #1a1a2e; font-family: monospace; }
+  .machine-sub { font-size: 12px; color: #9ca3af; margin-top: 4px; }
+  .risk-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #fee2e2; color: #991b1b; }
+  .risk-badge.warn { background: #fef3c7; color: #92400e; }
+  .metrics-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; margin-bottom: 16px; }
+  .metric-block { background: #f9fafb; border-radius: 8px; padding: 12px; }
+  .metric-label { font-size: 11px; color: #6b7280; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
+  .metric-value { font-size: 16px; font-weight: 700; color: #1a1a2e; margin-bottom: 8px; }
+  .progress-bar { height: 6px; background: #e5e7eb; border-radius: 99px; overflow: hidden; margin-bottom: 4px; }
+  .progress-fill { height: 100%; border-radius: 99px; }
+  .metric-pct { font-size: 12px; color: #374151; }
+  .dev-badge { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; margin-left: 4px; }
+  .dev-up { background: #fef9c3; color: #854d0e; }
+  .dev-down { background: #dcfce7; color: #166534; }
+  .worker-detail { margin-top: 12px; }
+  .worker-detail summary { cursor: pointer; font-size: 13px; color: #4b5563; padding: 8px 0; user-select: none; }
+  .worker-detail summary:hover { color: #1a1a2e; }
+  .worker-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 12px; }
+  .worker-table th { background: #f3f4f6; padding: 8px 10px; text-align: left; font-weight: 600; color: #374151; border-bottom: 2px solid #e5e7eb; }
+  .worker-table td { padding: 7px 10px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+  .worker-table tr:hover td { background: #fafafa; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 6px; }
+  .tag-jm { background: #dbeafe; color: #1d4ed8; }
+  .tag-tm { background: #f3e8ff; color: #7e22ce; }
+  .ok { color: #16a34a; font-weight: 600; }
+  .med { color: #d97706; font-weight: 600; }
+  .high { color: #dc2626; font-weight: 600; }
+  .findings { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 28px; }
+  .finding-item { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid #f3f4f6; }
+  .finding-item:last-child { border-bottom: none; }
+  .finding-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .icon-warn { background: #fef3c7; }
+  .icon-info { background: #dbeafe; }
+  .finding-title { font-size: 14px; font-weight: 700; color: #1a1a2e; margin-bottom: 4px; }
+  .finding-desc { font-size: 13px; color: #6b7280; line-height: 1.6; }
+  .footer { text-align: center; font-size: 12px; color: #9ca3af; padding: 24px; }
+</style>
+</head>
+<body>
+<div class="header">
+  <a href="https://mybkcosmos.mybank.cn/proxy/cosmos/flink/cluster/eg168-cluster-pre/eg168-cluster-pre-service.blink-operator.svc.eg168.mybank.cn:8081/#/overview" target="_blank" class="flink-link">🔗 Flink UI</a>
+  <h1>Flink 集群画像负载效果评估报告</h1>
+  <div class="cluster-name">集群：eg168-cluster-pre</div>
+  <div class="meta">数据采集时间：2026-04-01 16:34:12 &nbsp;|&nbsp; Floating Ratio: CPU×1.1 / MEM×1.1 &nbsp;|&nbsp; 共 4 台 WorkManager</div>
+</div>
+
+<div class="container">
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="s-label">集群 CPU 实际占用</div>
+    <div class="s-val">46.2%</div>
+    <div class="s-sub">44.4 / 96 核</div>
+    <span class="s-badge badge-ok">正常</span>
+  </div>
+  <div class="summary-card">
+    <div class="s-label">集群内存实际占用</div>
+    <div class="s-val">63.3%</div>
+    <div class="s-sub">121.5 / 192 GB</div>
+    <span class="s-badge badge-warn">偏高</span>
+  </div>
+  <div class="summary-card">
+    <div class="s-label">画像 CPU 偏差（vs 实际）</div>
+    <div class="s-val">+21.3%</div>
+    <div class="s-sub">画像 56.0% vs 实际 46.2%</div>
+    <span class="s-badge badge-warn">画像偏高</span>
+  </div>
+  <div class="summary-card">
+    <div class="s-label">画像内存偏差（vs 实际）</div>
+    <div class="s-val">+35.2%</div>
+    <div class="s-sub">画像 85.6% vs 实际 63.3%</div>
+    <span class="s-badge badge-danger">偏差较大</span>
+  </div>
+</div>
+
+<div class="section-title">集群维度负载汇总</div>
+<div class="cluster-overview">
+  <div class="cluster-row header-row">
+    <div class="cell">维度</div>
+    <div class="cell">CPU 实际</div><div class="cell">CPU 逻辑</div><div class="cell">CPU 画像</div>
+    <div class="cell">内存 实际</div><div class="cell">内存 逻辑</div><div class="cell">内存 画像</div>
+  </div>
+  <div class="cluster-row data-row">
+    <div class="row-label">集群合计</div>
+    <div class="cell row-actual">44.4核 (46.2%)</div>
+    <div class="cell row-logical">53.8核 (56.0%)</div>
+    <div class="cell row-profile">53.8核 (56.0%)</div>
+    <div class="cell row-actual">121.5GB (63.3%)</div>
+    <div class="cell row-logical">164.3GB (85.6%)</div>
+    <div class="cell row-profile">164.3GB (85.6%)</div>
+  </div>
+  <div class="cluster-row data-row"><div class="row-label" style="font-family:monospace;font-size:12px">33.190.84.129</div><div class="cell row-actual">11.1核 (46.3%)</div><div class="cell row-logical">14.0核 (58.2%)</div><div class="cell row-profile">14.0核 (58.2%)</div><div class="cell row-actual">32.2GB (67.0%)</div><div class="cell row-logical">44.2GB (92.0%)</div><div class="cell row-profile">44.2GB (92.0%)</div></div>
+<div class="cluster-row data-row"><div class="row-label" style="font-family:monospace;font-size:12px">33.190.85.106</div><div class="cell row-actual">16.1核 (66.9%)</div><div class="cell row-logical">18.2核 (75.9%)</div><div class="cell row-profile">18.2核 (75.9%)</div><div class="cell row-actual">40.8GB (84.9%)</div><div class="cell row-logical">49.1GB (102.4%)</div><div class="cell row-profile">49.1GB (102.4%)</div></div>
+<div class="cluster-row data-row"><div class="row-label" style="font-family:monospace;font-size:12px">33.190.85.70</div><div class="cell row-actual">4.4核 (18.2%)</div><div class="cell row-logical">5.2核 (21.7%)</div><div class="cell row-profile">5.2核 (21.7%)</div><div class="cell row-actual">14.1GB (29.4%)</div><div class="cell row-logical">23.0GB (48.0%)</div><div class="cell row-profile">23.0GB (48.0%)</div></div>
+<div class="cluster-row data-row"><div class="row-label" style="font-family:monospace;font-size:12px">33.190.85.103</div><div class="cell row-actual">12.8核 (53.5%)</div><div class="cell row-logical">16.4核 (68.4%)</div><div class="cell row-profile">16.4核 (68.4%)</div><div class="cell row-actual">34.5GB (71.9%)</div><div class="cell row-logical">48.0GB (100.0%)</div><div class="cell row-profile">48.0GB (100.0%)</div></div>
+</div>
+
+<div class="section-title">关键发现</div>
+<div class="findings">
+  <div class="finding-item">
+    <div class="finding-icon icon-info">💡</div>
+    <div>
+      <div class="finding-title">画像值 = 逻辑负载（当前行为）</div>
+      <div class="finding-desc">实时数据显示所有机器的画像负载与逻辑负载完全一致，说明当前画像直接采用逻辑资源（申请量按 floating ratio 换算），并非基于实际运行时行为的预测模型输出。画像功能（<code>workermanager.profile.switch=false</code>）目前处于关闭状态。</div>
+    </div>
+  </div>
+  <div class="finding-item">
+    <div class="finding-icon icon-warn">⚠️</div>
+    <div>
+      <div class="finding-title">画像整体高于实际：CPU +21.3%，内存 +35.2%</div>
+      <div class="finding-desc">集群维度画像 CPU 比实际高 21.3%，内存高 35.2%。这意味着画像预留了比实际需要更多的资源，调度器倾向于认为机器负载更高，会抑制新作业调度到这些机器，造成资源浪费。</div>
+    </div>
+  </div>
+  <div class="finding-item">
+    <div class="finding-icon icon-warn">⚠️</div>
+    <div>
+      <div class="finding-title">负载不均衡：33.190.85.70 明显轻载</div>
+      <div class="finding-desc">33.190.85.70 的 CPU 实际负载仅 18.2%、内存 29.4%，远低于集群平均水平（CPU 46.2%），但其内存画像偏差达 +63.2%。负载不均会加剧其他机器的压力，建议优化调度策略向该机器倾斜。</div>
+    </div>
+  </div>
+  <div class="finding-item">
+    <div class="finding-icon icon-warn">🚨</div>
+    <div>
+      <div class="finding-title">33.190.85.106 / 33.190.85.103 内存画像接近或超过 100%</div>
+      <div class="finding-desc">33.190.85.106 内存画像 102.4%，33.190.85.103 内存画像 100.0%，均接近或超过逻辑上限，新作业将无法调度至这两台机器，在 33.190.85.70 轻载的情况下，整体调度效率受到明显影响。</div>
+    </div>
+  </div>
+  <div class="finding-item">
+    <div class="finding-icon icon-info">📊</div>
+    <div>
+      <div class="finding-title">内存偏差系统性大于 CPU 偏差（1.7x）</div>
+      <div class="finding-desc">CPU 画像偏差 +21.3%，内存画像偏差 +35.2%，内存偏差约为 CPU 的 1.7 倍。说明作业内存实际使用率（实际占申请量之比）整体偏低，内存资源存在明显浪费，申请量远大于实际需要。</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-title">各 WorkManager 详情</div>
+<div class="machine-card"><div class="machine-header"><div><div class="machine-ip">33.190.84.129</div><div class="machine-sub">13 workers &nbsp;|&nbsp; 24 CPU核 / 48 GB内存</div></div><div><span class="risk-badge warn">内存画像偏高</span></div></div><div class="metrics-grid"><div class="metric-block"><div class="metric-label">CPU 实际</div><div class="metric-value">11.10 核</div><div class="progress-bar"><div class="progress-fill" style="width:46.3%;background:#22c55e"></div></div><div class="metric-pct">46.3%</div></div><div class="metric-block"><div class="metric-label">CPU 逻辑</div><div class="metric-value">13.96 核</div><div class="progress-bar"><div class="progress-fill" style="width:58.2%;background:#22c55e"></div></div><div class="metric-pct">58.2%</div></div><div class="metric-block"><div class="metric-label">CPU 画像</div><div class="metric-value">13.96 核</div><div class="progress-bar"><div class="progress-fill" style="width:58.2%;background:#22c55e"></div></div><div class="metric-pct">58.2%<span class="dev-badge dev-up">+25.7% vs 实际</span></div></div><div class="metric-block"><div class="metric-label">内存 实际</div><div class="metric-value">32.16 GB</div><div class="progress-bar"><div class="progress-fill" style="width:67.0%;background:#eab308"></div></div><div class="metric-pct">67.0%</div></div><div class="metric-block"><div class="metric-label">内存 逻辑</div><div class="metric-value">44.17 GB</div><div class="progress-bar"><div class="progress-fill" style="width:92.0%;background:#f97316"></div></div><div class="metric-pct">92.0%</div></div><div class="metric-block"><div class="metric-label">内存 画像</div><div class="metric-value">44.17 GB</div><div class="progress-bar"><div class="progress-fill" style="width:92.0%;background:#f97316"></div></div><div class="metric-pct">92.0%<span class="dev-badge dev-up">+37.3% vs 实际</span></div></div></div><details class="worker-detail"><summary>展开 Worker 明细（13 个）</summary><table class="worker-table"><thead><tr><th>Worker ID</th><th>CPU 实际</th><th>CPU 逻辑</th><th>CPU 画像</th><th>CPU 偏差</th><th>内存 实际(GB)</th><th>内存 逻辑(GB)</th><th>内存 画像(GB)</th><th>内存 偏差</th></tr></thead><tbody><tr><td><span class="tag tag-jm">JM</span>antc4flink3799000264-mybkc1cn-jobmanager-2</td><td>0.020 (0.1%)</td><td>0.032 (0.1%)</td><td>0.032 (0.1%)</td><td class="high">+56.3%</td><td>0.69 (1.4%)</td><td>0.75 (1.6%)</td><td>0.75 (1.6%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-jm">JM</span>antc4flink3907000236-mybkc1cn-jobmanager-5</td><td>0.029 (0.1%)</td><td>0.032 (0.1%)</td><td>0.032 (0.1%)</td><td class="ok">+10.0%</td><td>0.73 (1.5%)</td><td>0.80 (1.7%)</td><td>0.80 (1.7%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000341-mybkc1cn-taskmanager-5</td><td>0.094 (0.4%)</td><td>0.159 (0.7%)</td><td>0.159 (0.7%)</td><td class="high">+69.7%</td><td>1.65 (3.4%)</td><td>1.84 (3.8%)</td><td>1.84 (3.8%)</td><td class="ok">+11.2%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3907000236-mybkc1cn-taskmanager-5</td><td>2.346 (9.8%)</td><td>2.727 (11.4%)</td><td>2.727 (11.4%)</td><td class="ok">+16.2%</td><td>3.26 (6.8%)</td><td>6.68 (13.9%)</td><td>6.68 (13.9%)</td><td class="high">+105.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3903000142-mybkc1cn-taskmanager-2</td><td>3.359 (14.0%)</td><td>3.723 (15.5%)</td><td>3.723 (15.5%)</td><td class="ok">+10.8%</td><td>8.03 (16.7%)</td><td>8.91 (18.6%)</td><td>8.91 (18.6%)</td><td class="ok">+11.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-5</td><td>3.635 (15.1%)</td><td>5.057 (21.1%)</td><td>5.057 (21.1%)</td><td class="med">+39.1%</td><td>8.09 (16.9%)</td><td>9.02 (18.8%)</td><td>9.02 (18.8%)</td><td class="ok">+11.5%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-1</td><td>0.548 (2.3%)</td><td>0.753 (3.1%)</td><td>0.753 (3.1%)</td><td class="med">+37.4%</td><td>4.68 (9.8%)</td><td>5.15 (10.7%)</td><td>5.15 (10.7%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-28</td><td>0.067 (0.3%)</td><td>0.126 (0.5%)</td><td>0.126 (0.5%)</td><td class="high">+88.2%</td><td>0.70 (1.5%)</td><td>1.74 (3.6%)</td><td>1.74 (3.6%)</td><td class="high">+147.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-3</td><td>0.902 (3.8%)</td><td>1.208 (5.0%)</td><td>1.208 (5.0%)</td><td class="med">+34.0%</td><td>1.97 (4.1%)</td><td>6.68 (13.9%)</td><td>6.68 (13.9%)</td><td class="high">+239.7%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-19</td><td>0.019 (0.1%)</td><td>0.021 (0.1%)</td><td>0.021 (0.1%)</td><td class="ok">+10.0%</td><td>0.56 (1.2%)</td><td>0.62 (1.3%)</td><td>0.62 (1.3%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-21</td><td>0.019 (0.1%)</td><td>0.032 (0.1%)</td><td>0.032 (0.1%)</td><td class="high">+65.7%</td><td>0.54 (1.1%)</td><td>0.59 (1.2%)</td><td>0.59 (1.2%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-20</td><td>0.020 (0.1%)</td><td>0.022 (0.1%)</td><td>0.022 (0.1%)</td><td class="ok">+12.8%</td><td>0.49 (1.0%)</td><td>0.54 (1.1%)</td><td>0.54 (1.1%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000341-mybkc1cn-taskmanager-2</td><td>0.045 (0.2%)</td><td>0.068 (0.3%)</td><td>0.068 (0.3%)</td><td class="high">+50.6%</td><td>0.76 (1.6%)</td><td>0.83 (1.7%)</td><td>0.83 (1.7%)</td><td class="ok">+9.9%</td></tr></tbody></table></details></div>
+<div class="machine-card"><div class="machine-header"><div><div class="machine-ip">33.190.85.106</div><div class="machine-sub">8 workers &nbsp;|&nbsp; 24 CPU核 / 48 GB内存</div></div><div><span class="risk-badge">内存画像超限</span></div></div><div class="metrics-grid"><div class="metric-block"><div class="metric-label">CPU 实际</div><div class="metric-value">16.06 核</div><div class="progress-bar"><div class="progress-fill" style="width:66.9%;background:#eab308"></div></div><div class="metric-pct">66.9%</div></div><div class="metric-block"><div class="metric-label">CPU 逻辑</div><div class="metric-value">18.22 核</div><div class="progress-bar"><div class="progress-fill" style="width:75.9%;background:#eab308"></div></div><div class="metric-pct">75.9%</div></div><div class="metric-block"><div class="metric-label">CPU 画像</div><div class="metric-value">18.22 核</div><div class="progress-bar"><div class="progress-fill" style="width:75.9%;background:#eab308"></div></div><div class="metric-pct">75.9%<span class="dev-badge dev-up">+13.4% vs 实际</span></div></div><div class="metric-block"><div class="metric-label">内存 实际</div><div class="metric-value">40.75 GB</div><div class="progress-bar"><div class="progress-fill" style="width:84.9%;background:#f97316"></div></div><div class="metric-pct">84.9%</div></div><div class="metric-block"><div class="metric-label">内存 逻辑</div><div class="metric-value">49.13 GB</div><div class="progress-bar"><div class="progress-fill" style="width:100.0%;background:#ef4444"></div></div><div class="metric-pct">102.4%</div></div><div class="metric-block"><div class="metric-label">内存 画像</div><div class="metric-value">49.13 GB</div><div class="progress-bar"><div class="progress-fill" style="width:100.0%;background:#ef4444"></div></div><div class="metric-pct">102.4%<span class="dev-badge dev-up">+20.6% vs 实际</span></div></div></div><details class="worker-detail"><summary>展开 Worker 明细（8 个）</summary><table class="worker-table"><thead><tr><th>Worker ID</th><th>CPU 实际</th><th>CPU 逻辑</th><th>CPU 画像</th><th>CPU 偏差</th><th>内存 实际(GB)</th><th>内存 逻辑(GB)</th><th>内存 画像(GB)</th><th>内存 偏差</th></tr></thead><tbody><tr><td><span class="tag tag-jm">JM</span>antc4flink3799000366-mybkc1cn-jobmanager-4</td><td>0.024 (0.1%)</td><td>0.032 (0.1%)</td><td>0.032 (0.1%)</td><td class="med">+34.0%</td><td>0.61 (1.3%)</td><td>0.67 (1.4%)</td><td>0.67 (1.4%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000341-mybkc1cn-taskmanager-4</td><td>0.048 (0.2%)</td><td>0.068 (0.3%)</td><td>0.068 (0.3%)</td><td class="med">+42.7%</td><td>0.76 (1.6%)</td><td>0.84 (1.7%)</td><td>0.84 (1.7%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3907000236-mybkc1cn-taskmanager-3</td><td>1.608 (6.7%)</td><td>1.781 (7.4%)</td><td>1.781 (7.4%)</td><td class="ok">+10.7%</td><td>3.66 (7.6%)</td><td>6.04 (12.6%)</td><td>6.04 (12.6%)</td><td class="high">+65.2%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3903000142-mybkc1cn-taskmanager-3</td><td>3.797 (15.8%)</td><td>4.177 (17.4%)</td><td>4.177 (17.4%)</td><td class="ok">+10.0%</td><td>7.76 (16.2%)</td><td>8.58 (17.9%)</td><td>8.58 (17.9%)</td><td class="ok">+10.6%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-4</td><td>2.072 (8.6%)</td><td>2.308 (9.6%)</td><td>2.308 (9.6%)</td><td class="ok">+11.4%</td><td>6.77 (14.1%)</td><td>8.58 (17.9%)</td><td>8.58 (17.9%)</td><td class="med">+26.8%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3903000142-mybkc1cn-taskmanager-1</td><td>4.529 (18.9%)</td><td>4.982 (20.8%)</td><td>4.982 (20.8%)</td><td class="ok">+10.0%</td><td>7.06 (14.7%)</td><td>8.58 (17.9%)</td><td>8.58 (17.9%)</td><td class="med">+21.5%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-2</td><td>1.105 (4.6%)</td><td>1.511 (6.3%)</td><td>1.511 (6.3%)</td><td class="med">+36.7%</td><td>5.81 (12.1%)</td><td>6.68 (13.9%)</td><td>6.68 (13.9%)</td><td class="ok">+15.1%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-2</td><td>2.876 (12.0%)</td><td>3.358 (14.0%)</td><td>3.358 (14.0%)</td><td class="ok">+16.8%</td><td>8.31 (17.3%)</td><td>9.14 (19.0%)</td><td>9.14 (19.0%)</td><td class="ok">+10.0%</td></tr></tbody></table></details></div>
+<div class="machine-card"><div class="machine-header"><div><div class="machine-ip">33.190.85.70</div><div class="machine-sub">13 workers &nbsp;|&nbsp; 24 CPU核 / 48 GB内存</div></div><div></div></div><div class="metrics-grid"><div class="metric-block"><div class="metric-label">CPU 实际</div><div class="metric-value">4.36 核</div><div class="progress-bar"><div class="progress-fill" style="width:18.2%;background:#22c55e"></div></div><div class="metric-pct">18.2%</div></div><div class="metric-block"><div class="metric-label">CPU 逻辑</div><div class="metric-value">5.21 核</div><div class="progress-bar"><div class="progress-fill" style="width:21.7%;background:#22c55e"></div></div><div class="metric-pct">21.7%</div></div><div class="metric-block"><div class="metric-label">CPU 画像</div><div class="metric-value">5.21 核</div><div class="progress-bar"><div class="progress-fill" style="width:21.7%;background:#22c55e"></div></div><div class="metric-pct">21.7%<span class="dev-badge dev-up">+19.7% vs 实际</span></div></div><div class="metric-block"><div class="metric-label">内存 实际</div><div class="metric-value">14.10 GB</div><div class="progress-bar"><div class="progress-fill" style="width:29.4%;background:#22c55e"></div></div><div class="metric-pct">29.4%</div></div><div class="metric-block"><div class="metric-label">内存 逻辑</div><div class="metric-value">23.02 GB</div><div class="progress-bar"><div class="progress-fill" style="width:48.0%;background:#22c55e"></div></div><div class="metric-pct">48.0%</div></div><div class="metric-block"><div class="metric-label">内存 画像</div><div class="metric-value">23.02 GB</div><div class="progress-bar"><div class="progress-fill" style="width:48.0%;background:#22c55e"></div></div><div class="metric-pct">48.0%<span class="dev-badge dev-up">+63.2% vs 实际</span></div></div></div><details class="worker-detail"><summary>展开 Worker 明细（13 个）</summary><table class="worker-table"><thead><tr><th>Worker ID</th><th>CPU 实际</th><th>CPU 逻辑</th><th>CPU 画像</th><th>CPU 偏差</th><th>内存 实际(GB)</th><th>内存 逻辑(GB)</th><th>内存 画像(GB)</th><th>内存 偏差</th></tr></thead><tbody><tr><td><span class="tag tag-jm">JM</span>antc4flink3903000142-mybkc1cn-jobmanager-3</td><td>0.014 (0.1%)</td><td>0.021 (0.1%)</td><td>0.021 (0.1%)</td><td class="high">+50.0%</td><td>0.63 (1.3%)</td><td>0.69 (1.4%)</td><td>0.69 (1.4%)</td><td class="ok">+10.1%</td></tr>
+<tr><td><span class="tag tag-jm">JM</span>antc4flink3799000341-mybkc1cn-jobmanager-3</td><td>0.017 (0.1%)</td><td>0.021 (0.1%)</td><td>0.021 (0.1%)</td><td class="med">+23.0%</td><td>0.62 (1.3%)</td><td>0.68 (1.4%)</td><td>0.68 (1.4%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-9</td><td>0.063 (0.3%)</td><td>0.096 (0.4%)</td><td>0.096 (0.4%)</td><td class="high">+50.4%</td><td>0.61 (1.3%)</td><td>0.67 (1.4%)</td><td>0.67 (1.4%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-7</td><td>0.084 (0.3%)</td><td>0.110 (0.5%)</td><td>0.110 (0.5%)</td><td class="med">+31.8%</td><td>0.60 (1.3%)</td><td>0.69 (1.4%)</td><td>0.69 (1.4%)</td><td class="ok">+14.6%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-8</td><td>0.065 (0.3%)</td><td>0.096 (0.4%)</td><td>0.096 (0.4%)</td><td class="med">+46.6%</td><td>0.60 (1.3%)</td><td>0.69 (1.4%)</td><td>0.69 (1.4%)</td><td class="ok">+15.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3907000236-mybkc1cn-taskmanager-1</td><td>1.462 (6.1%)</td><td>1.634 (6.8%)</td><td>1.634 (6.8%)</td><td class="ok">+11.7%</td><td>2.75 (5.7%)</td><td>7.39 (15.4%)</td><td>7.39 (15.4%)</td><td class="high">+168.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-18</td><td>0.478 (2.0%)</td><td>0.664 (2.8%)</td><td>0.664 (2.8%)</td><td class="med">+39.0%</td><td>1.70 (3.5%)</td><td>2.66 (5.5%)</td><td>2.66 (5.5%)</td><td class="high">+56.5%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-16</td><td>0.076 (0.3%)</td><td>0.110 (0.5%)</td><td>0.110 (0.5%)</td><td class="med">+45.2%</td><td>0.61 (1.3%)</td><td>0.73 (1.5%)</td><td>0.73 (1.5%)</td><td class="ok">+19.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-14</td><td>0.058 (0.2%)</td><td>0.081 (0.3%)</td><td>0.081 (0.3%)</td><td class="med">+39.6%</td><td>0.59 (1.2%)</td><td>0.83 (1.7%)</td><td>0.83 (1.7%)</td><td class="med">+40.3%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-12</td><td>0.073 (0.3%)</td><td>0.096 (0.4%)</td><td>0.096 (0.4%)</td><td class="med">+30.5%</td><td>0.60 (1.2%)</td><td>0.66 (1.4%)</td><td>0.66 (1.4%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-11</td><td>0.051 (0.2%)</td><td>0.081 (0.3%)</td><td>0.081 (0.3%)</td><td class="high">+60.7%</td><td>0.80 (1.7%)</td><td>0.88 (1.8%)</td><td>0.88 (1.8%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3907000236-mybkc1cn-taskmanager-4</td><td>1.841 (7.7%)</td><td>2.094 (8.7%)</td><td>2.094 (8.7%)</td><td class="ok">+13.7%</td><td>3.36 (7.0%)</td><td>5.75 (12.0%)</td><td>5.75 (12.0%)</td><td class="high">+71.2%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-10</td><td>0.074 (0.3%)</td><td>0.110 (0.5%)</td><td>0.110 (0.5%)</td><td class="med">+49.1%</td><td>0.63 (1.3%)</td><td>0.69 (1.4%)</td><td>0.69 (1.4%)</td><td class="ok">+9.9%</td></tr></tbody></table></details></div>
+<div class="machine-card"><div class="machine-header"><div><div class="machine-ip">33.190.85.103</div><div class="machine-sub">13 workers &nbsp;|&nbsp; 24 CPU核 / 48 GB内存</div></div><div><span class="risk-badge">内存画像超限</span></div></div><div class="metrics-grid"><div class="metric-block"><div class="metric-label">CPU 实际</div><div class="metric-value">12.84 核</div><div class="progress-bar"><div class="progress-fill" style="width:53.5%;background:#22c55e"></div></div><div class="metric-pct">53.5%</div></div><div class="metric-block"><div class="metric-label">CPU 逻辑</div><div class="metric-value">16.41 核</div><div class="progress-bar"><div class="progress-fill" style="width:68.4%;background:#eab308"></div></div><div class="metric-pct">68.4%</div></div><div class="metric-block"><div class="metric-label">CPU 画像</div><div class="metric-value">16.41 核</div><div class="progress-bar"><div class="progress-fill" style="width:68.4%;background:#eab308"></div></div><div class="metric-pct">68.4%<span class="dev-badge dev-up">+27.8% vs 实际</span></div></div><div class="metric-block"><div class="metric-label">内存 实际</div><div class="metric-value">34.51 GB</div><div class="progress-bar"><div class="progress-fill" style="width:71.9%;background:#eab308"></div></div><div class="metric-pct">71.9%</div></div><div class="metric-block"><div class="metric-label">内存 逻辑</div><div class="metric-value">48.00 GB</div><div class="progress-bar"><div class="progress-fill" style="width:100.0%;background:#ef4444"></div></div><div class="metric-pct">100.0%</div></div><div class="metric-block"><div class="metric-label">内存 画像</div><div class="metric-value">48.00 GB</div><div class="progress-bar"><div class="progress-fill" style="width:100.0%;background:#ef4444"></div></div><div class="metric-pct">100.0%<span class="dev-badge dev-up">+39.1% vs 实际</span></div></div></div><details class="worker-detail"><summary>展开 Worker 明细（13 个）</summary><table class="worker-table"><thead><tr><th>Worker ID</th><th>CPU 实际</th><th>CPU 逻辑</th><th>CPU 画像</th><th>CPU 偏差</th><th>内存 实际(GB)</th><th>内存 逻辑(GB)</th><th>内存 画像(GB)</th><th>内存 偏差</th></tr></thead><tbody><tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-19</td><td>0.028 (0.1%)</td><td>0.032 (0.1%)</td><td>0.032 (0.1%)</td><td class="ok">+13.8%</td><td>0.61 (1.3%)</td><td>0.67 (1.4%)</td><td>0.67 (1.4%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000341-mybkc1cn-taskmanager-7</td><td>0.111 (0.5%)</td><td>0.196 (0.8%)</td><td>0.196 (0.8%)</td><td class="high">+76.2%</td><td>1.62 (3.4%)</td><td>4.69 (9.8%)</td><td>4.69 (9.8%)</td><td class="high">+190.4%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000341-mybkc1cn-taskmanager-6</td><td>0.042 (0.2%)</td><td>0.068 (0.3%)</td><td>0.068 (0.3%)</td><td class="high">+60.6%</td><td>0.69 (1.4%)</td><td>0.76 (1.6%)</td><td>0.76 (1.6%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-17</td><td>0.107 (0.4%)</td><td>0.159 (0.7%)</td><td>0.159 (0.7%)</td><td class="med">+48.6%</td><td>0.65 (1.4%)</td><td>0.78 (1.6%)</td><td>0.78 (1.6%)</td><td class="ok">+19.4%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-15</td><td>0.013 (0.1%)</td><td>0.021 (0.1%)</td><td>0.021 (0.1%)</td><td class="high">+57.6%</td><td>0.56 (1.2%)</td><td>0.62 (1.3%)</td><td>0.62 (1.3%)</td><td class="ok">+9.9%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-13</td><td>0.096 (0.4%)</td><td>0.126 (0.5%)</td><td>0.126 (0.5%)</td><td class="med">+30.6%</td><td>0.63 (1.3%)</td><td>0.70 (1.5%)</td><td>0.70 (1.5%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3907000236-mybkc1cn-taskmanager-2</td><td>1.082 (4.5%)</td><td>1.208 (5.0%)</td><td>1.208 (5.0%)</td><td class="ok">+11.7%</td><td>2.24 (4.7%)</td><td>4.69 (9.8%)</td><td>4.69 (9.8%)</td><td class="high">+109.7%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3907000236-mybkc1cn-taskmanager-6</td><td>2.061 (8.6%)</td><td>2.300 (9.6%)</td><td>2.300 (9.6%)</td><td class="ok">+11.6%</td><td>5.46 (11.4%)</td><td>6.68 (13.9%)</td><td>6.68 (13.9%)</td><td class="med">+22.4%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-1</td><td>6.109 (25.5%)</td><td>7.955 (33.1%)</td><td>7.955 (33.1%)</td><td class="med">+30.2%</td><td>9.30 (19.4%)</td><td>10.22 (21.3%)</td><td>10.22 (21.3%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000264-mybkc1cn-taskmanager-3</td><td>2.830 (11.8%)</td><td>3.723 (15.5%)</td><td>3.723 (15.5%)</td><td class="med">+31.5%</td><td>7.40 (15.4%)</td><td>9.02 (18.8%)</td><td>9.02 (18.8%)</td><td class="med">+22.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000366-mybkc1cn-taskmanager-6</td><td>0.090 (0.4%)</td><td>0.126 (0.5%)</td><td>0.126 (0.5%)</td><td class="med">+39.5%</td><td>0.61 (1.3%)</td><td>0.67 (1.4%)</td><td>0.67 (1.4%)</td><td class="ok">+10.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000341-mybkc1cn-taskmanager-1</td><td>0.159 (0.7%)</td><td>0.305 (1.3%)</td><td>0.305 (1.3%)</td><td class="high">+92.3%</td><td>2.82 (5.9%)</td><td>4.03 (8.4%)</td><td>4.03 (8.4%)</td><td class="med">+43.0%</td></tr>
+<tr><td><span class="tag tag-tm">TM</span>antc4flink3799000341-mybkc1cn-taskmanager-3</td><td>0.115 (0.5%)</td><td>0.196 (0.8%)</td><td>0.196 (0.8%)</td><td class="high">+70.9%</td><td>1.93 (4.0%)</td><td>4.46 (9.3%)</td><td>4.46 (9.3%)</td><td class="high">+131.2%</td></tr></tbody></table></details></div>
+
+<div class="footer">
+  eg168-cluster-pre &nbsp;|&nbsp; 数据采集：2026-04-01 16:34:12 &nbsp;|&nbsp; Flink 集群画像负载评估
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,77 @@
+{
+  "timestamp": "2026-04-01 14:48:46",
+  "machines": [
+    {
+      "machine": "33.190.84.129",
+      "workers": 13,
+      "actual_cpu": 46.26,
+      "logical_cpu": 58.16,
+      "profile_cpu": 58.16,
+      "actual_cpu_cores": 11.1,
+      "logical_cpu_cores": 13.96,
+      "profile_cpu_cores": 13.96,
+      "actual_mem_gb": 32.16,
+      "logical_mem_gb": 44.17,
+      "profile_mem_gb": 44.17,
+      "actual_mem_pct": 67.0,
+      "logical_mem_pct": 92.02,
+      "profile_mem_pct": 92.02
+    },
+    {
+      "machine": "33.190.85.106",
+      "workers": 8,
+      "actual_cpu": 66.91,
+      "logical_cpu": 75.9,
+      "profile_cpu": 75.9,
+      "actual_cpu_cores": 16.06,
+      "logical_cpu_cores": 18.22,
+      "profile_cpu_cores": 18.22,
+      "actual_mem_gb": 40.75,
+      "logical_mem_gb": 49.13,
+      "profile_mem_gb": 49.13,
+      "actual_mem_pct": 84.9,
+      "logical_mem_pct": 102.36,
+      "profile_mem_pct": 102.36
+    },
+    {
+      "machine": "33.190.85.70",
+      "workers": 13,
+      "actual_cpu": 18.15,
+      "logical_cpu": 21.72,
+      "profile_cpu": 21.72,
+      "actual_cpu_cores": 4.36,
+      "logical_cpu_cores": 5.21,
+      "profile_cpu_cores": 5.21,
+      "actual_mem_gb": 14.1,
+      "logical_mem_gb": 23.02,
+      "profile_mem_gb": 23.02,
+      "actual_mem_pct": 29.37,
+      "logical_mem_pct": 47.95,
+      "profile_mem_pct": 47.95
+    },
+    {
+      "machine": "33.190.85.103",
+      "workers": 13,
+      "actual_cpu": 53.52,
+      "logical_cpu": 68.39,
+      "profile_cpu": 68.39,
+      "actual_cpu_cores": 12.84,
+      "logical_cpu_cores": 16.41,
+      "profile_cpu_cores": 16.41,
+      "actual_mem_gb": 34.51,
+      "logical_mem_gb": 48.0,
+      "profile_mem_gb": 48.0,
+      "actual_mem_pct": 71.9,
+      "logical_mem_pct": 100.0,
+      "profile_mem_pct": 100.0
+    }
+  ],
+  "cluster": {
+    "actual_cpu": 44.361746673472226,
+    "logical_cpu": 53.80201044958682,
+    "profile_cpu": 53.80201044958682,
+    "actual_mem": 124438,
+    "logical_mem": 168266,
+    "profile_mem": 168266
+  }
+}
